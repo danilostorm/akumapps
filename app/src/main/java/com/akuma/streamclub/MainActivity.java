@@ -381,7 +381,7 @@ public class MainActivity extends Activity {
 
             String json = body.toString().replace(" ", "");
             return !json.isEmpty() && !json.equals("null") && !json.equals("{}")
-                    && !json.equals("[]") && !json.contains(""data":null");
+                    && !json.equals("[]") && !json.contains("\"data\":null");
         } catch (Exception ignored) {
             return false;
         } finally {
