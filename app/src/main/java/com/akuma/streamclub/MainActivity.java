@@ -246,7 +246,7 @@ public class MainActivity extends Activity {
     private String sanitizeChannel(String value) {
         if (value == null) return "danilostorm";
         value = value.trim().replace("@", "");
-        value = value.replaceAll("[^a-zA-Z0-9_\-]", "");
+        value = value.replaceAll("[^a-zA-Z0-9_-]", "");
         return value.isEmpty() ? "danilostorm" : value;
     }
 
