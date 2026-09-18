@@ -1,0 +1,11 @@
+<resources>
+    <color name="akuma_bg">#070911</color>
+    <color name="akuma_panel">#111522</color>
+    <color name="akuma_panel_2">#171C2B</color>
+    <color name="akuma_text">#F7F7FB</color>
+    <color name="akuma_muted">#98A1B8</color>
+    <color name="akuma_red">#FF3B5C</color>
+    <color name="akuma_purple">#7C4DFF</color>
+    <color name="kick_green">#53FC18</color>
+    <color name="twitch_purple">#9146FF</color>
+</resources>

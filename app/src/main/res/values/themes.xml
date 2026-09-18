@@ -1,0 +1,10 @@
+<resources>
+    <style name="Theme.AkumaStreamClub" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">@color/akuma_bg</item>
+        <item name="android:navigationBarColor">@color/akuma_bg</item>
+        <item name="android:windowBackground">@color/akuma_bg</item>
+        <item name="android:colorAccent">@color/akuma_red</item>
+    </style>
+</resources>

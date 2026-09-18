@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">Akuma Stream Club</string>
+    <string name="audio_mode">Modo Áudio</string>
+    <string name="video_mode">Assistir Agora</string>
+    <string name="status_checking">Verificando plataformas…</string>
+    <string name="status_offline">Nenhuma live detectada agora</string>
+    <string name="settings">Configurações</string>
+    <string name="refresh">Atualizar</string>
+    <string name="platform_auto">AUTO</string>
+    <string name="platform_kick">KICK</string>
+    <string name="platform_twitch">TWITCH</string>
+    <string name="live_now">AO VIVO</string>
+    <string name="background_audio">Áudio em segundo plano ativo</string>
+    <string name="player_error">Não foi possível carregar o player.</string>
+</resources>
