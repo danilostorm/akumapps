@@ -611,7 +611,7 @@ public class MainActivity extends Activity {
         ));
         pageScroll.setVisibility(View.GONE);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR);
-        setImmersive(true);
+        setImmersiveMode(true);
     }
 
     private void hideCustomFullscreen() {
@@ -625,14 +625,14 @@ public class MainActivity extends Activity {
         customView = null;
         pageScroll.setVisibility(View.VISIBLE);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
-        setImmersive(false);
+        setImmersiveMode(false);
         if (customCallback != null) {
             customCallback.onCustomViewHidden();
             customCallback = null;
         }
     }
 
-    private void setImmersive(boolean immersive) {
+    private void setImmersiveMode(boolean immersive) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             WindowInsetsController controller = getWindow().getInsetsController();
             if (controller != null) {
