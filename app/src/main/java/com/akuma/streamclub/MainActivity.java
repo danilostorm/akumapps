@@ -33,6 +33,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -40,9 +41,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
-import android.widget.ArrayAdapter;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -64,12 +63,8 @@ public class MainActivity extends Activity {
     private LinearLayout audioCard;
     private LinearLayout header;
     private LinearLayout statusCard;
-    private LinearLayout platformRow;
     private Button btnVideo;
     private Button btnRefresh;
-    private Button btnAuto;
-    private Button btnKick;
-    private Button btnTwitch;
     private TextView platformBadge;
     private TextView channelName;
     private TextView statusText;
@@ -85,10 +80,8 @@ public class MainActivity extends Activity {
     private String loadedPlatform = "";
     private String loadedChannel = "";
     private boolean videoMode = false;
-    private boolean pausedByUser = false;
     private boolean isInPip = false;
     private boolean customFullscreen = false;
-    private View customView;
     private FrameLayout customContainer;
     private WebChromeClient.CustomViewCallback customCallback;
 
@@ -104,13 +97,9 @@ public class MainActivity extends Activity {
         @Override
         public void onReceive(Context context, Intent intent) {
             String control = intent.getStringExtra(StreamPlaybackService.EXTRA_CONTROL);
-            if ("pause".equals(control)) {
-                pausePlayback();
-            } else if ("play".equals(control)) {
-                resumePlayback();
-            } else if ("stop".equals(control)) {
-                stopPlayback();
-            }
+            if ("pause".equals(control)) pausePlayback();
+            if ("play".equals(control)) resumePlayback();
+            if ("stop".equals(control)) stopPlayback();
         }
     };
 
@@ -131,8 +120,9 @@ public class MainActivity extends Activity {
         videoMode = prefs.getBoolean("start_video", false);
 
         String initial = MODE_TWITCH.equals(currentMode) ? MODE_TWITCH : MODE_KICK;
-        switchPlatform(initial, false);
+        switchPlatform(initial, true);
         setVideoMode(videoMode);
+
         checkLiveStatus(true);
         handler.postDelayed(liveCheckTask, 30000);
     }
@@ -143,48 +133,24 @@ public class MainActivity extends Activity {
         audioCard = findViewById(R.id.audio_card);
         header = findViewById(R.id.header);
         statusCard = findViewById(R.id.status_card);
-        platformRow = findViewById(R.id.platform_row);
         btnVideo = findViewById(R.id.btn_video);
         btnRefresh = findViewById(R.id.btn_refresh);
-        btnAuto = findViewById(R.id.btn_auto);
-        btnKick = findViewById(R.id.btn_kick);
-        btnTwitch = findViewById(R.id.btn_twitch);
         platformBadge = findViewById(R.id.platform_badge);
         channelName = findViewById(R.id.channel_name);
         statusText = findViewById(R.id.status_text);
         liveBadge = findViewById(R.id.live_badge);
         pageScroll = findViewById(R.id.page_scroll);
+
         findViewById(R.id.btn_settings).setOnClickListener(v -> showSettings());
+        audioCard.setOnClickListener(v -> setVideoMode(true));
     }
 
     private void registerControls() {
         btnVideo.setOnClickListener(v -> setVideoMode(!videoMode));
-        btnRefresh.setOnClickListener(v -> checkLiveStatus(true));
-
-        btnAuto.setOnClickListener(v -> {
-            currentMode = MODE_AUTO;
-            prefs.edit().putString("mode", MODE_AUTO).apply();
-            updateModeButtons();
+        btnRefresh.setOnClickListener(v -> {
+            forceAutoplay();
             checkLiveStatus(true);
         });
-
-        btnKick.setOnClickListener(v -> {
-            currentMode = MODE_KICK;
-            prefs.edit().putString("mode", MODE_KICK).apply();
-            updateModeButtons();
-            switchPlatform(MODE_KICK, true);
-            checkLiveStatus(false);
-        });
-
-        btnTwitch.setOnClickListener(v -> {
-            currentMode = MODE_TWITCH;
-            prefs.edit().putString("mode", MODE_TWITCH).apply();
-            updateModeButtons();
-            switchPlatform(MODE_TWITCH, true);
-            checkLiveStatus(false);
-        });
-
-        updateModeButtons();
     }
 
     private void configureWebView() {
@@ -198,14 +164,17 @@ public class MainActivity extends Activity {
         settings.setAllowContentAccess(true);
         settings.setSupportMultipleWindows(false);
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
-        settings.setUserAgentString(settings.getUserAgentString() + " " + BuildConfig.APP_USER_AGENT);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        settings.setUserAgentString(settings.getUserAgentString() + " " + BuildConfig.APP_USER_AGENT);
 
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
         cookies.setAcceptThirdPartyCookies(player, true);
 
         player.setBackgroundColor(Color.BLACK);
+        player.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        player.setKeepScreenOn(false);
+
         player.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -219,6 +188,14 @@ public class MainActivity extends Activity {
                     startActivity(new Intent(Intent.ACTION_VIEW, uri));
                 } catch (Exception ignored) {}
                 return true;
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                forceAutoplay();
+                handler.postDelayed(() -> forceAutoplay(), 700);
+                handler.postDelayed(() -> forceAutoplay(), 1800);
+                handler.postDelayed(() -> forceAutoplay(), 3500);
             }
         });
 
@@ -250,45 +227,60 @@ public class MainActivity extends Activity {
         return value.isEmpty() ? "danilostorm" : value;
     }
 
-    private void switchPlatform(String platform, boolean userRequested) {
+    private void switchPlatform(String platform, boolean force) {
         String channel = MODE_TWITCH.equals(platform) ? twitchChannel() : kickChannel();
 
-        if (platform.equals(loadedPlatform) && channel.equals(loadedChannel) && !userRequested) {
+        if (!force && platform.equals(loadedPlatform) && channel.equals(loadedChannel)) {
             updatePlatformUi(platform, channel);
+            forceAutoplay();
             return;
         }
 
         currentPlatform = platform;
         loadedPlatform = platform;
         loadedChannel = channel;
-        pausedByUser = false;
+
         updatePlatformUi(platform, channel);
         loadPlayer(platform, channel);
         startOrUpdateService(false);
     }
 
     private void loadPlayer(String platform, String channel) {
-        String quality = prefs.getString("quality", "160p");
-        String iframe;
+        player.onResume();
 
         if (MODE_TWITCH.equals(platform)) {
-            iframe = "https://player.twitch.tv/?channel=" + Uri.encode(channel)
-                    + "&parent=akumstream.app&autoplay=true&muted=false";
+            String safeChannel = channel.replace("'", "");
+            String html = "<!doctype html><html><head>"
+                    + "<meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'>"
+                    + "<style>html,body,#twitch{margin:0;width:100%;height:100%;background:#000;overflow:hidden}</style>"
+                    + "</head><body><div id='twitch'></div>"
+                    + "<script src='https://player.twitch.tv/js/embed/v1.js'></script>"
+                    + "<script>"
+                    + "function boot(){try{"
+                    + "window.akumaPlayer=new Twitch.Player('twitch',{channel:'" + safeChannel + "',width:'100%',height:'100%',autoplay:true,muted:false,parent:['akumstream.app']});"
+                    + "window.akumaPlayer.addEventListener(Twitch.Player.READY,function(){try{window.akumaPlayer.setMuted(false);window.akumaPlayer.setVolume(1);window.akumaPlayer.play();}catch(e){}});"
+                    + "}catch(e){setTimeout(boot,500);}}"
+                    + "boot();"
+                    + "</script></body></html>";
+            player.loadDataWithBaseURL("https://akumstream.app/", html, "text/html", "UTF-8", null);
         } else {
-            iframe = "https://player.kick.com/" + Uri.encode(channel)
+            String quality = prefs.getString("quality", "160p");
+            String url = "https://player.kick.com/" + Uri.encode(channel)
                     + "?autoplay=true&muted=false&quality=" + Uri.encode(quality)
                     + "&parent=akumstream.app";
+            player.loadUrl(url);
         }
+    }
 
-        String html = "<!doctype html><html><head>"
-                + "<meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'>"
-                + "<style>html,body,iframe{margin:0;width:100%;height:100%;background:#000;border:0;overflow:hidden}</style>"
-                + "</head><body>"
-                + "<iframe src='" + iframe + "' allow='autoplay; fullscreen; encrypted-media; picture-in-picture' allowfullscreen></iframe>"
-                + "</body></html>";
-
-        player.loadDataWithBaseURL("https://akumstream.app/", html, "text/html", "UTF-8", null);
-        player.onResume();
+    private void forceAutoplay() {
+        if (player == null) return;
+        String js = "(function(){try{"
+                + "if(window.akumaPlayer){try{window.akumaPlayer.setMuted(false);window.akumaPlayer.setVolume(1);window.akumaPlayer.play();}catch(e){}}"
+                + "var v=document.querySelector('video');"
+                + "if(v){v.muted=false;v.volume=1;var p=v.play();if(p&&p.catch){p.catch(function(){});}}"
+                + "if(v&&v.paused){var b=document.querySelector('button[aria-label*=Play],button[aria-label*=play],[data-testid*=play]');if(b){try{b.click();}catch(e){}}}"
+                + "}catch(e){}})();";
+        player.evaluateJavascript(js, null);
     }
 
     private void updatePlatformUi(String platform, String channel) {
@@ -296,34 +288,26 @@ public class MainActivity extends Activity {
         platformBadge.setText(twitch ? "TWITCH" : "KICK");
         platformBadge.setTextColor(getColor(twitch ? R.color.twitch_purple : R.color.kick_green));
         channelName.setText("@" + channel);
-        statusText.setText("Conectando ao player " + (twitch ? "Twitch" : "Kick") + "…");
-        updateModeButtons();
-    }
-
-    private void updateModeButtons() {
-        btnAuto.setAlpha(MODE_AUTO.equals(currentMode) ? 1f : .58f);
-        btnKick.setAlpha(MODE_KICK.equals(currentMode) ? 1f : .58f);
-        btnTwitch.setAlpha(MODE_TWITCH.equals(currentMode) ? 1f : .58f);
+        statusText.setText("Conectando…");
     }
 
     private void setVideoMode(boolean enabled) {
         videoMode = enabled;
         prefs.edit().putBoolean("last_video_mode", enabled).apply();
 
-        ViewGroup.LayoutParams params = playerShell.getLayoutParams();
-        params.height = dp(enabled ? 224 : 1);
-        playerShell.setLayoutParams(params);
-        playerShell.setAlpha(enabled ? 1f : .01f);
         audioCard.setVisibility(enabled ? View.GONE : View.VISIBLE);
-        btnVideo.setText(enabled ? "Voltar ao modo áudio" : getString(R.string.video_mode));
+        player.setAlpha(enabled ? 1f : 0.02f);
+        btnVideo.setText(enabled ? "Ouvir em segundo plano" : "Assistir live");
+
+        if (enabled) forceAutoplay();
     }
 
     private void checkLiveStatus(boolean immediateUi) {
         if (!isOnline()) {
-            statusText.setText("Sem conexão com a internet");
+            statusText.setText("Sem internet");
             return;
         }
-        if (immediateUi) statusText.setText(R.string.status_checking);
+        if (immediateUi) statusText.setText("Conectando…");
 
         final String kick = kickChannel();
         final String twitch = twitchChannel();
@@ -331,14 +315,13 @@ public class MainActivity extends Activity {
         networkExecutor.submit(() -> {
             boolean kickLive = isKickLive(kick);
             boolean twitchLive = isTwitchLive(twitch);
-
             runOnUiThread(() -> applyLiveResult(kickLive, twitchLive));
         });
     }
 
     private void applyLiveResult(boolean kickLive, boolean twitchLive) {
         boolean anyLive = kickLive || twitchLive;
-        liveBadge.setAlpha(anyLive ? 1f : .45f);
+        liveBadge.setVisibility(anyLive ? View.VISIBLE : View.INVISIBLE);
 
         if (MODE_AUTO.equals(currentMode)) {
             boolean returnKick = prefs.getBoolean("return_kick", true);
@@ -347,17 +330,21 @@ public class MainActivity extends Activity {
             } else if (twitchLive) {
                 switchPlatform(MODE_TWITCH, false);
             }
+        } else if (MODE_KICK.equals(currentMode) && !MODE_KICK.equals(currentPlatform)) {
+            switchPlatform(MODE_KICK, false);
+        } else if (MODE_TWITCH.equals(currentMode) && !MODE_TWITCH.equals(currentPlatform)) {
+            switchPlatform(MODE_TWITCH, false);
         }
 
-        String current = MODE_TWITCH.equals(currentPlatform) ? "Twitch" : "Kick";
         boolean currentLive = MODE_TWITCH.equals(currentPlatform) ? twitchLive : kickLive;
 
         if (currentLive) {
-            statusText.setText(current + " está ao vivo • fallback monitorando em segundo plano");
-        } else if (anyLive) {
-            statusText.setText("Outra plataforma está ao vivo • toque AUTO para trocar");
+            statusText.setText("Ao vivo agora");
+            forceAutoplay();
+        } else if (anyLive && MODE_AUTO.equals(currentMode)) {
+            statusText.setText("Trocando transmissão…");
         } else {
-            statusText.setText(R.string.status_offline);
+            statusText.setText("Offline no momento");
         }
     }
 
@@ -424,28 +411,23 @@ public class MainActivity extends Activity {
     }
 
     private void pausePlayback() {
-        pausedByUser = true;
         player.onPause();
-        statusText.setText("Áudio pausado");
+        player.evaluateJavascript("(function(){try{if(window.akumaPlayer){window.akumaPlayer.pause();}var v=document.querySelector('video');if(v)v.pause();}catch(e){}})();", null);
+        statusText.setText("Pausado");
         startOrUpdateService(true);
     }
 
     private void resumePlayback() {
-        pausedByUser = false;
         player.onResume();
-        if (loadedPlatform.isEmpty()) {
-            switchPlatform(currentPlatform, true);
-        } else {
-            player.reload();
-        }
-        statusText.setText("Retomando transmissão…");
+        forceAutoplay();
+        handler.postDelayed(() -> forceAutoplay(), 600);
+        statusText.setText("Conectando…");
         startOrUpdateService(false);
     }
 
     private void stopPlayback() {
-        pausedByUser = true;
         player.loadUrl("about:blank");
-        statusText.setText("Transmissão encerrada");
+        statusText.setText("Pausado");
     }
 
     private void startOrUpdateService(boolean paused) {
@@ -476,24 +458,37 @@ public class MainActivity extends Activity {
         content.setPadding(pad, dp(4), pad, dp(4));
 
         EditText kick = new EditText(this);
-        kick.setHint("Canal Kick");
+        kick.setHint("Canal da Kick");
         kick.setText(kickChannel());
 
         EditText twitch = new EditText(this);
-        twitch.setHint("Canal Twitch");
+        twitch.setHint("Canal da Twitch");
         twitch.setText(twitchChannel());
 
+        TextView sourceLabel = new TextView(this);
+        sourceLabel.setText("Reprodução");
+        sourceLabel.setPadding(0, dp(12), 0, dp(4));
+
+        Spinner source = new Spinner(this);
+        String[] modes = new String[]{"Automático", "Somente Kick", "Somente Twitch"};
+        source.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, modes));
+        source.setSelection(MODE_KICK.equals(currentMode) ? 1 : MODE_TWITCH.equals(currentMode) ? 2 : 0);
+
         CheckBox returnKick = new CheckBox(this);
-        returnKick.setText("Voltar automaticamente para Kick");
+        returnKick.setText("Voltar para a Kick quando ela estiver ao vivo");
         returnKick.setChecked(prefs.getBoolean("return_kick", true));
 
         CheckBox startVideo = new CheckBox(this);
-        startVideo.setText("Abrir o app no modo vídeo");
+        startVideo.setText("Abrir já com o vídeo");
         startVideo.setChecked(prefs.getBoolean("start_video", false));
 
         CheckBox autoPip = new CheckBox(this);
-        autoPip.setText("Picture-in-Picture ao sair no modo vídeo");
+        autoPip.setText("Mini player ao sair do app");
         autoPip.setChecked(prefs.getBoolean("auto_pip", true));
+
+        TextView qualityLabel = new TextView(this);
+        qualityLabel.setText("Qualidade na Kick");
+        qualityLabel.setPadding(0, dp(12), 0, dp(4));
 
         Spinner quality = new Spinner(this);
         String[] qualities = new String[]{"160p", "360p", "720p", "auto"};
@@ -503,12 +498,10 @@ public class MainActivity extends Activity {
             if (qualities[i].equals(savedQuality)) quality.setSelection(i);
         }
 
-        TextView qualityLabel = new TextView(this);
-        qualityLabel.setText("Qualidade preferida na Kick");
-        qualityLabel.setPadding(0, dp(12), 0, dp(4));
-
         content.addView(kick);
         content.addView(twitch);
+        content.addView(sourceLabel);
+        content.addView(source);
         content.addView(returnKick);
         content.addView(startVideo);
         content.addView(autoPip);
@@ -519,22 +512,32 @@ public class MainActivity extends Activity {
         scroll.addView(content);
 
         new AlertDialog.Builder(this)
-                .setTitle("Akuma Stream Club")
+                .setTitle("Configurações")
                 .setView(scroll)
                 .setNegativeButton("Cancelar", null)
                 .setPositiveButton("Salvar", (dialog, which) -> {
+                    int modePosition = source.getSelectedItemPosition();
+                    currentMode = modePosition == 1 ? MODE_KICK : modePosition == 2 ? MODE_TWITCH : MODE_AUTO;
+
                     prefs.edit()
                             .putString("kick_channel", sanitizeChannel(kick.getText().toString()))
                             .putString("twitch_channel", sanitizeChannel(twitch.getText().toString()))
+                            .putString("mode", currentMode)
                             .putBoolean("return_kick", returnKick.isChecked())
                             .putBoolean("start_video", startVideo.isChecked())
                             .putBoolean("auto_pip", autoPip.isChecked())
                             .putString("quality", qualities[quality.getSelectedItemPosition()])
                             .apply();
+
                     loadedPlatform = "";
                     loadedChannel = "";
+
+                    if (MODE_TWITCH.equals(currentMode)) {
+                        switchPlatform(MODE_TWITCH, true);
+                    } else {
+                        switchPlatform(MODE_KICK, true);
+                    }
                     checkLiveStatus(true);
-                    switchPlatform(currentPlatform, true);
                 })
                 .show();
     }
@@ -573,21 +576,16 @@ public class MainActivity extends Activity {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
         isInPip = isInPictureInPictureMode;
         setChromeVisible(!isInPictureInPictureMode);
-
-        ViewGroup.LayoutParams params = playerShell.getLayoutParams();
-        params.height = dp(isInPictureInPictureMode ? 260 : (videoMode ? 224 : 1));
-        playerShell.setLayoutParams(params);
-        playerShell.setAlpha(isInPictureInPictureMode || videoMode ? 1f : .01f);
+        audioCard.setVisibility(isInPictureInPictureMode ? View.GONE : (!videoMode ? View.VISIBLE : View.GONE));
+        player.setAlpha(1f);
     }
 
     private void setChromeVisible(boolean visible) {
         int value = visible ? View.VISIBLE : View.GONE;
         header.setVisibility(value);
         statusCard.setVisibility(value);
-        platformRow.setVisibility(value);
         btnRefresh.setVisibility(value);
         btnVideo.setVisibility(value);
-        audioCard.setVisibility(visible && !videoMode ? View.VISIBLE : View.GONE);
     }
 
     private void showCustomFullscreen(View view, WebChromeClient.CustomViewCallback callback) {
@@ -595,8 +593,8 @@ public class MainActivity extends Activity {
             callback.onCustomViewHidden();
             return;
         }
+
         customFullscreen = true;
-        customView = view;
         customCallback = callback;
 
         customContainer = new FrameLayout(this);
@@ -609,6 +607,7 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
+
         pageScroll.setVisibility(View.GONE);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR);
         setImmersiveMode(true);
@@ -617,15 +616,18 @@ public class MainActivity extends Activity {
     private void hideCustomFullscreen() {
         if (!customFullscreen) return;
         customFullscreen = false;
+
         if (customContainer != null) {
             customContainer.removeAllViews();
-            ((ViewGroup) customContainer.getParent()).removeView(customContainer);
+            ViewGroup parent = (ViewGroup) customContainer.getParent();
+            if (parent != null) parent.removeView(customContainer);
             customContainer = null;
         }
-        customView = null;
+
         pageScroll.setVisibility(View.VISIBLE);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         setImmersiveMode(false);
+
         if (customCallback != null) {
             customCallback.onCustomViewHidden();
             customCallback = null;
@@ -675,6 +677,7 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         handler.removeCallbacksAndMessages(null);
         networkExecutor.shutdownNow();
+
         try {
             unregisterReceiver(controlReceiver);
         } catch (Exception ignored) {}
@@ -686,6 +689,7 @@ public class MainActivity extends Activity {
             player.setWebViewClient(null);
             player.destroy();
         }
+
         super.onDestroy();
     }
 }
